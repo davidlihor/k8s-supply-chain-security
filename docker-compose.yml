@@ -1,8 +1,39 @@
 services:
   sql:
     image: mcr.microsoft.com/azure-sql-edge
+    container_name: reactivities-sql
     environment:
       ACCEPT_EULA: "1"
       MSSQL_SA_PASSWORD: "Password@123"
     ports:
       - "1433:1433"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: reactivities-api
+    ports:
+      - "5000:8080"
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=sql;Database=reactivities;User Id=sa;Password=Password@123;TrustServerCertificate=True
+      - ASPNETCORE_ENVIRONMENT=Development
+      - TokenKey=super_secret_key_for_development_purposes_only_64_characters_long
+      - JWT__Key=super_secret_key_for_development_purposes_only_64_characters_long
+      - JWT__Issuer=reactivities
+      - JWT__Audience=reactivities
+    depends_on:
+      - sql
+
+  client-app:
+    build:
+      context: ./client-app
+      dockerfile: Dockerfile
+    container_name: reactivities-client
+    ports:
+      - "3000:8080"
+    environment:
+      - API_URL=http://localhost:5000/api
+      - CHAT_URL=http://localhost:5000/chat
+    depends_on:
+      - api
