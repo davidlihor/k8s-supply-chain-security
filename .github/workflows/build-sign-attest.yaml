@@ -18,7 +18,7 @@ permissions:
   attestations: write
 
 env:
-  AWS_REGION: eu-west-2
+  AWS_REGION: eu-central-1
 
 jobs:
   # Stage 1: Build & Push (Per-Service Matrix)
@@ -31,7 +31,7 @@ jobs:
         include:
           - service: backend
             ecr_repo: supply-chain-security-dev-backend
-            dockerfile: backend/API/Dockerfile
+            dockerfile: backend/Dockerfile
             context: .
             source_name: reactivities-backend
           - service: frontend
