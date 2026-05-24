@@ -31,7 +31,7 @@ jobs:
         include:
           - service: backend
             ecr_repo: supply-chain-security-dev-backend
-            dockerfile: Dockerfile
+            dockerfile: backend/Dockerfile
             context: backend
             source_name: reactivities-backend
           - service: frontend
