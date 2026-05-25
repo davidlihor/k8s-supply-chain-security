@@ -41,10 +41,10 @@ jobs:
         include:
           - service: backend
             ecr_repo: supply-chain-security-dev-backend
-            identity_regexp: github.com/davidlihor/reactivities
+            identity_regexp: github.com/davidlihor/k8s-supply-chain-security
           - service: frontend
             ecr_repo: supply-chain-security-dev-frontend
-            identity_regexp: github.com/davidlihor/reactivities
+            identity_regexp: github.com/davidlihor/k8s-supply-chain-security
     
     outputs:
       backend-image: ${{ steps.output.outputs.backend-image }}
