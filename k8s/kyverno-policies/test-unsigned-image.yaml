@@ -1,0 +1,24 @@
+# Test manifest for Kyverno policy enforcement
+# This deliberately uses an unsigned nginx image to verify that
+# policies correctly reject unsigned/unverified images.
+#
+# Usage:
+#   kubectl apply -f test-unsigned-image.yaml
+#
+# Expected result:
+#   Error: admission webhook denied the request
+#   (Policy enforcement working correctly)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-unsigned-nginx
+  namespace: reactivities
+  labels:
+    app: test-unsigned
+    purpose: policy-validation
+spec:
+  containers:
+    - name: nginx
+      image: nginx:latest
+      ports:
+        - containerPort: 80

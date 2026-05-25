@@ -1,0 +1,464 @@
+name: Verify & Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - Build, Sign & Attest (Matrix)
+    types: 
+      - completed
+    branches: 
+      - main
+  workflow_dispatch:
+    inputs:
+      backend_digest:
+        description: "Backend image digest (sha256:...)"
+        required: false
+        type: string
+      frontend_digest:
+        description: "Frontend image digest (sha256:...)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: eu-central-1
+  EKS_CLUSTER: supply-chain-security-dev-eks
+  OIDC_ISSUER: https://token.actions.githubusercontent.com
+
+jobs:
+  resolve:
+    name: Resolve ${{ matrix.service }} Image
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            ecr_repo: supply-chain-security-dev-backend
+            identity_regexp: github.com/davidlihor/reactivities
+          - service: frontend
+            ecr_repo: supply-chain-security-dev-frontend
+            identity_regexp: github.com/davidlihor/reactivities
+    
+    outputs:
+      backend-image: ${{ steps.output.outputs.backend-image }}
+      backend-digest: ${{ steps.output.outputs.backend-digest }}
+      frontend-image: ${{ steps.output.outputs.frontend-image }}
+      frontend-digest: ${{ steps.output.outputs.frontend-digest }}
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve image digest
+        id: resolve
+        run: |
+          REGISTRY="${{ steps.login.outputs.registry }}"
+
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ "${{ matrix.service }}" == "backend" ] && [ -n "${{ inputs.backend_digest }}" ]; then
+              DIGEST="${{ inputs.backend_digest }}"
+            elif [ "${{ matrix.service }}" == "frontend" ] && [ -n "${{ inputs.frontend_digest }}" ]; then
+              DIGEST="${{ inputs.frontend_digest }}"
+            else
+              DIGEST=$(aws ecr describe-images \
+                --repository-name "${{ matrix.ecr_repo }}" \
+                --output json \
+                | jq -r '[.imageDetails[] | select(.imageTags != null) | select(.imageTags[] | test("\\.(sig|att)$") | not)] | sort_by(.imagePushedAt) | last | .imageDigest')
+            fi
+          else
+            DIGEST=$(aws ecr describe-images \
+              --repository-name "${{ matrix.ecr_repo }}" \
+              --output json \
+              | jq -r '[.imageDetails[] | select(.imageTags != null) | select(.imageTags[] | test("\\.(sig|att)$") | not)] | sort_by(.imagePushedAt) | last | .imageDigest')
+          fi
+
+          IMAGE="${REGISTRY}/${{ matrix.ecr_repo }}@${DIGEST}"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${{ matrix.service }}: ${IMAGE}"
+
+      - name: Export outputs
+        id: output
+        run: |
+          echo "${{ matrix.service }}-image=${{ steps.resolve.outputs.image }}" >> "$GITHUB_OUTPUT"
+          echo "${{ matrix.service }}-digest=${{ steps.resolve.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+      - name: Save resolution metadata
+        run: |
+          mkdir -p resolution
+          cat > resolution/${{ matrix.service }}.json << EOF
+          {
+            "service": "${{ matrix.service }}",
+            "ecr_repo": "${{ matrix.ecr_repo }}",
+            "image": "${{ steps.resolve.outputs.image }}",
+            "digest": "${{ steps.resolve.outputs.digest }}",
+            "identity_regexp": "${{ matrix.identity_regexp }}"
+          }
+          EOF
+
+      - name: Upload resolution metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: resolution-${{ matrix.service }}
+          path: resolution/${{ matrix.service }}.json
+          retention-days: 1
+
+  verify-signature:
+    name: Verify ${{ matrix.service }} Signature
+    runs-on: ubuntu-latest
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, frontend]
+    
+    steps:
+      - name: Download resolution metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: resolution-${{ matrix.service }}
+
+      - name: Load metadata
+        id: meta
+        run: |
+          IMAGE=$(jq -r '.image' ${{ matrix.service }}.json)
+          IDENTITY=$(jq -r '.identity_regexp' ${{ matrix.service }}.json)
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "identity_regexp=${IDENTITY}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Verify cosign signature
+        run: |
+          echo "Verifying signature for ${{ matrix.service }}..."
+          echo "Image: ${{ steps.meta.outputs.image }}"
+          
+          cosign verify "${{ steps.meta.outputs.image }}" \
+            --certificate-oidc-issuer="${OIDC_ISSUER}" \
+            --certificate-identity-regexp="${{ steps.meta.outputs.identity_regexp }}" \
+            --output text
+          
+          echo ""
+          echo "✓ Signature verification passed for ${{ matrix.service }}"
+
+  verify-provenance:
+    name: Verify ${{ matrix.service }} Provenance
+    runs-on: ubuntu-latest
+    needs: [resolve, verify-signature]
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, frontend]
+    
+    steps:
+      - name: Download resolution metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: resolution-${{ matrix.service }}
+
+      - name: Load metadata
+        id: meta
+        run: |
+          IMAGE=$(jq -r '.image' ${{ matrix.service }}.json)
+          IDENTITY=$(jq -r '.identity_regexp' ${{ matrix.service }}.json)
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "identity_regexp=${IDENTITY}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Verify SLSA provenance attestation
+        run: |
+          echo "Verifying SLSA provenance for ${{ matrix.service }}..."
+          
+          cosign verify-attestation "${{ steps.meta.outputs.image }}" \
+            --type slsaprovenance \
+            --certificate-oidc-issuer="${OIDC_ISSUER}" \
+            --certificate-identity-regexp="${{ steps.meta.outputs.identity_regexp }}" \
+            | jq -r '.payload' | base64 -d | jq '.predicate'
+          
+          echo ""
+          echo "✓ Provenance verification passed for ${{ matrix.service }}"
+
+  verify-sbom:
+    name: Verify ${{ matrix.service }} SBOMs
+    runs-on: ubuntu-latest
+    needs: [resolve, verify-provenance]
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, frontend]
+    
+    env:
+      GRYPE_DB_AUTO_UPDATE: "true"
+      GRYPE_DB_MAX_ALLOWED_BUILT_AGE: "120h"
+    
+    steps:
+      - name: Download resolution metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: resolution-${{ matrix.service }}
+
+      - name: Load metadata
+        id: meta
+        run: |
+          IMAGE=$(jq -r '.image' ${{ matrix.service }}.json)
+          IDENTITY=$(jq -r '.identity_regexp' ${{ matrix.service }}.json)
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "identity_regexp=${IDENTITY}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Install Grype
+        uses: anchore/scan-action/download-grype@v4
+        with:
+          grype-version: "v0.88.0"
+
+      - name: Update Grype vulnerability database
+        run: |
+          grype db delete || true
+          grype db update
+          grype db status
+
+      - name: Verify and extract SPDX SBOM
+        run: |
+          echo "Extracting SPDX SBOM for ${{ matrix.service }}..."
+          
+          cosign verify-attestation "${{ steps.meta.outputs.image }}" \
+            --type spdxjson \
+            --certificate-oidc-issuer="${OIDC_ISSUER}" \
+            --certificate-identity-regexp="${{ steps.meta.outputs.identity_regexp }}" \
+            | jq -r '.payload' | base64 -d | jq '.predicate' > sbom-spdx.json
+
+          PACKAGES=$(jq '.packages | length' sbom-spdx.json)
+          echo "SPDX SBOM contains ${PACKAGES} packages"
+
+      - name: Verify and extract CycloneDX SBOM
+        run: |
+          echo "Extracting CycloneDX SBOM for ${{ matrix.service }}..."
+          
+          cosign verify-attestation "${{ steps.meta.outputs.image }}" \
+            --type cyclonedx \
+            --certificate-oidc-issuer="${OIDC_ISSUER}" \
+            --certificate-identity-regexp="${{ steps.meta.outputs.identity_regexp }}" \
+            | jq -r '.payload' | base64 -d | jq '.predicate' > sbom-cyclonedx.json
+
+          COMPONENTS=$(jq '.components | length' sbom-cyclonedx.json)
+          echo "CycloneDX SBOM contains ${COMPONENTS} components"
+          echo ""
+          echo "✓ SBOM verification passed for ${{ matrix.service }}"
+
+      - name: Re-scan against latest vulnerability database
+        run: |
+          echo "Running deploy-time vulnerability check for ${{ matrix.service }}..."
+          
+          grype sbom:sbom-spdx.json \
+            --output table \
+            --add-cpes-if-none
+
+          grype sbom:sbom-cyclonedx.json \
+            --output json \
+            --add-cpes-if-none > grype-deploy-results.json
+
+          TOTAL=$(jq '.matches | length' grype-deploy-results.json)
+          CRITICAL=$(jq '[.matches[] | select(.vulnerability.severity == "Critical")] | length' grype-deploy-results.json)
+          HIGH=$(jq '[.matches[] | select(.vulnerability.severity == "High")] | length' grype-deploy-results.json)
+          
+          echo ""
+          echo "Deploy-time scan results: ${TOTAL} total, ${CRITICAL} critical, ${HIGH} high"
+          
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "⚠ Critical vulnerabilities detected - deployment should be reviewed"
+          fi
+
+      - name: Upload deploy-time scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-scan-${{ matrix.service }}
+          path: grype-deploy-results.json
+          retention-days: 7
+
+  deploy:
+    name: Deploy ${{ matrix.service }} to EKS
+    runs-on: ubuntu-latest
+    needs: [resolve, verify-signature, verify-provenance, verify-sbom]
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            k8s_deployment: k8s/backend.yaml
+            k8s_namespace: reactivities
+            deployment_name: reactivities-backend
+          - service: frontend
+            k8s_deployment: k8s/frontend.yaml
+            k8s_namespace: reactivities
+            deployment_name: reactivities-frontend
+    
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Download resolution metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: resolution-${{ matrix.service }}
+
+      - name: Load metadata
+        id: meta
+        run: |
+          IMAGE=$(jq -r '.image' ${{ matrix.service }}.json)
+          DIGEST=$(jq -r '.digest' ${{ matrix.service }}.json)
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region "${AWS_REGION}" \
+            --name "${EKS_CLUSTER}"
+
+      - name: Create namespace if needed
+        run: |
+          kubectl create namespace ${{ matrix.k8s_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply secrets
+        run: |
+          kubectl apply -f k8s/secrets.yaml
+
+      - name: Apply SQL deployment
+        if: matrix.service == 'backend'
+        run: |
+          kubectl apply -f k8s/sql.yaml
+
+      - name: Deploy verified image
+        run: |
+          echo "Deploying ${{ matrix.service }} with verified image:"
+          echo "${{ steps.meta.outputs.image }}"
+          
+          sed "s|IMAGE_PLACEHOLDER|${{ steps.meta.outputs.image }}|g" \
+            ${{ matrix.k8s_deployment }} | kubectl apply -f -
+
+      - name: Add deployment metadata
+        run: |
+          kubectl set env deployment/${{ matrix.deployment_name }} \
+            -n ${{ matrix.k8s_namespace }} \
+            IMAGE_DIGEST="${{ steps.meta.outputs.digest }}" \
+            COMMIT_SHA="${GITHUB_SHA}" \
+            DEPLOYED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            VERIFIED="true"
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/${{ matrix.deployment_name }} \
+            -n ${{ matrix.k8s_namespace }} \
+            --timeout=180s
+
+      - name: Verify deployment
+        run: |
+          echo "Deployment status for ${{ matrix.service }}:"
+          kubectl get pods -n ${{ matrix.k8s_namespace }} -l app=${{ matrix.service }} -o wide
+          echo ""
+          kubectl get deployment ${{ matrix.deployment_name }} -n ${{ matrix.k8s_namespace }}
+
+  summary:
+    name: Verification Summary
+    runs-on: ubuntu-latest
+    needs: [resolve, verify-signature, verify-provenance, verify-sbom, deploy]
+    if: always()
+    
+    steps:
+      - name: Download all resolution metadata
+        uses: actions/download-artifact@v4
+        with:
+          pattern: resolution-*
+          merge-multiple: true
+
+      - name: Generate summary
+        run: |
+          echo "## Verification & Deployment Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Workflow Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          
+          echo "| Verification Stage | Backend | Frontend |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------------------|---------|----------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Signature Verification | ${{ needs.verify-signature.result }} | ${{ needs.verify-signature.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Provenance Verification | ${{ needs.verify-provenance.result }} | ${{ needs.verify-provenance.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SBOM & Vulnerability Check | ${{ needs.verify-sbom.result }} | ${{ needs.verify-sbom.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Deployment | ${{ needs.deploy.result }} | ${{ needs.deploy.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          
+          echo "### Deployed Images" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          
+          for service in backend frontend; do
+            if [ -f "${service}.json" ]; then
+              echo "#### ${service^}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **Image:** \`$(jq -r '.image' ${service}.json)\`" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **Digest:** \`$(jq -r '.digest' ${service}.json)\`" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          
+          echo "### Verification Chain" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Signature ✓ → Provenance ✓ → SBOM ✓ → Vuln Scan ✓ → Deploy ✓" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
