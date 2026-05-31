@@ -1,14 +1,13 @@
 global:
   namespace: hardened-zone
   projectName: hardened-zone
-
 backend:
   enabled: true
   replicaCount: 2
   image:
-    repository: ""
-    tag: ""    
-    digest: ""
+    repository: "405483480335.dkr.ecr.eu-central-1.amazonaws.com/supply-chain-security-dev-backend"
+    tag: "latest"
+    digest: "sha256:94ba72e4bdcff8f42640f3a09f6031fe3898110452af6c7c24ac569c6a95db58"
   service:
     type: ClusterIP
     port: 8080
@@ -19,14 +18,13 @@ backend:
     requests:
       cpu: 250m
       memory: 256Mi
-
 frontend:
   enabled: true
   replicaCount: 2
   image:
-    repository: ""
-    tag: ""
-    digest: ""
+    repository: "405483480335.dkr.ecr.eu-central-1.amazonaws.com/supply-chain-security-dev-frontend"
+    tag: "latest"
+    digest: "sha256:abb16935113dd1c29307ccacde9db3b6e5e80d556d152759f11c29b7ae610cb3"
   service:
     type: ClusterIP
     port: 8080
@@ -37,7 +35,6 @@ frontend:
     requests:
       cpu: 100m
       memory: 128Mi
-
 sql:
   enabled: true
   image:
@@ -50,10 +47,8 @@ sql:
     requests:
       cpu: "0.5"
       memory: 512Mi
-
 secrets:
   jwtKey: "super_secret_key_for_development_purposes_only_64_characters_long"
-
 kyverno:
   enabled: true
   policies:
