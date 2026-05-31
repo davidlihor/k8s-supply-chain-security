@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: supply-chain-security
+  namespace: argocd
+spec:
+  description: "Project for Supply Chain Security"
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: hardened-zone
+    - server: https://kubernetes.default.svc
+      namespace: default
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+    - server: https://kubernetes.default.svc
+      namespace: kyverno
+    - server: 'https://kubernetes.default.svc'
+      namespace: kube-system 
+  clusterResourceWhitelist:
+    - group: ''
+      kind: 'Namespace'
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRole
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRoleBinding
+    - group: 'apiextensions.k8s.io'
+      kind: CustomResourceDefinition
+    - group: 'admissionregistration.k8s.io'
+      kind: MutatingWebhookConfiguration
+    - group: 'admissionregistration.k8s.io'
+      kind: ValidatingWebhookConfiguration
+    - group: 'apiregistration.k8s.io'
+    - group: 'kyverno.io'
+      kind: ClusterPolicy
+  sourceRepos:
+    - '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

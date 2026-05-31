@@ -20,7 +20,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 env:
@@ -329,94 +329,51 @@ jobs:
           retention-days: 7
 
   deploy:
-    name: Deploy ${{ matrix.service }} to EKS
+    name: Update GitOps Config
     runs-on: ubuntu-latest
     needs: [resolve, verify-signature, verify-provenance, verify-sbom]
     environment: production
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: backend
-            k8s_deployment: k8s/backend.yaml
-            k8s_namespace: reactivities
-            deployment_name: reactivities-backend
-          - service: frontend
-            k8s_deployment: k8s/frontend.yaml
-            k8s_namespace: reactivities
-            deployment_name: reactivities-frontend
     
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download resolution metadata
         uses: actions/download-artifact@v4
         with:
-          name: resolution-${{ matrix.service }}
+          pattern: resolution-*
+          merge-multiple: true
 
-      - name: Load metadata
-        id: meta
+      - name: Update Helm values
         run: |
-          IMAGE=$(jq -r '.image' ${{ matrix.service }}.json)
-          DIGEST=$(jq -r '.digest' ${{ matrix.service }}.json)
-          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          for service in backend frontend; do
+            if [ -f "${service}.json" ]; then
+              IMAGE=$(jq -r '.image' ${service}.json)
+              DIGEST=$(jq -r '.digest' ${service}.json)
+              REPO=$(echo $IMAGE | cut -d'@' -f1)
+              
+              echo "Updating $service with $DIGEST"
+              yq -i ".${service}.image.repository = \"${REPO}\"" helm/values.yaml
+              yq -i ".${service}.image.digest = \"${DIGEST}\"" helm/values.yaml
+              yq -i ".${service}.image.tag = \"latest\"" helm/values.yaml
+            fi
+          done
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Update kubeconfig
+      - name: Commit and push changes
         run: |
-          aws eks update-kubeconfig \
-            --region "${AWS_REGION}" \
-            --name "${EKS_CLUSTER}"
-
-      - name: Create namespace if needed
-        run: |
-          kubectl create namespace ${{ matrix.k8s_namespace }} --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Apply secrets
-        run: |
-          kubectl apply -f k8s/secrets.yaml
-
-      - name: Apply SQL deployment
-        if: matrix.service == 'backend'
-        run: |
-          kubectl apply -f k8s/sql.yaml
-
-      - name: Deploy verified image
-        run: |
-          echo "Deploying ${{ matrix.service }} with verified image:"
-          echo "${{ steps.meta.outputs.image }}"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          sed "s|IMAGE_PLACEHOLDER|${{ steps.meta.outputs.image }}|g" \
-            ${{ matrix.k8s_deployment }} | kubectl apply -f -
-
-      - name: Add deployment metadata
-        run: |
-          kubectl set env deployment/${{ matrix.deployment_name }} \
-            -n ${{ matrix.k8s_namespace }} \
-            IMAGE_DIGEST="${{ steps.meta.outputs.digest }}" \
-            COMMIT_SHA="${GITHUB_SHA}" \
-            DEPLOYED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-            VERIFIED="true"
-
-      - name: Wait for rollout
-        run: |
-          kubectl rollout status deployment/${{ matrix.deployment_name }} \
-            -n ${{ matrix.k8s_namespace }} \
-            --timeout=180s
-
-      - name: Verify deployment
-        run: |
-          echo "Deployment status for ${{ matrix.service }}:"
-          kubectl get pods -n ${{ matrix.k8s_namespace }} -l app=${{ matrix.service }} -o wide
-          echo ""
-          kubectl get deployment ${{ matrix.deployment_name }} -n ${{ matrix.k8s_namespace }}
+          git add helm/values.yaml
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore(gitops): update images [skip ci]"
+            git push origin main
+          fi
 
   summary:
     name: Verification Summary
@@ -443,10 +400,10 @@ jobs:
           echo "| Signature Verification | ${{ needs.verify-signature.result }} | ${{ needs.verify-signature.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Provenance Verification | ${{ needs.verify-provenance.result }} | ${{ needs.verify-provenance.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| SBOM & Vulnerability Check | ${{ needs.verify-sbom.result }} | ${{ needs.verify-sbom.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Deployment | ${{ needs.deploy.result }} | ${{ needs.deploy.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| GitOps Update | ${{ needs.deploy.result }} | ${{ needs.deploy.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "### Deployed Images" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Updated GitOps Config" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
           for service in backend frontend; do

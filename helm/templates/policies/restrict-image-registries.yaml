@@ -1,0 +1,38 @@
+{{ if and .Values.kyverno.enabled .Values.kyverno.policies.restrictImageRegistries }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict Image Registries
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Restricts container images to approved registries: AWS ECR for application
+      images and Microsoft Container Registry for SQL Server. Prevents image
+      substitution attacks by blocking pulls from untrusted registries.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-registry
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - {{ .Values.global.namespace }}
+      validate:
+        message: >-
+          Images must be from approved registries: ECR (*.dkr.ecr.*.amazonaws.com/reactivities-*)
+          or Microsoft (mcr.microsoft.com/*). Untrusted registry detected.
+        anyPattern:
+          - spec:
+              containers:
+                - image: "*.dkr.ecr.*.amazonaws.com/supply-chain-security-dev-*"
+          - spec:
+              containers:
+                - image: "mcr.microsoft.com/*"
+{{ end }}

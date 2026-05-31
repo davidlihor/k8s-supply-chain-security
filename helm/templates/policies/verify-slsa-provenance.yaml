@@ -1,0 +1,53 @@
+{{ if and .Values.kyverno.enabled .Values.kyverno.policies.verifySlsaProvenance }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-slsa-provenance
+  annotations:
+    policies.kyverno.io/title: Verify SLSA Provenance Attestation
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Verifies that application images have valid SLSA provenance attestations
+      signed by GitHub Actions OIDC. SQL Server images are excluded.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-provenance-attestation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - {{ .Values.global.namespace }}
+      exclude:
+        any:
+          - resources:
+              selector:
+                matchLabels:
+                  app: sql
+      verifyImages:
+        - imageReferences:
+            - "*.dkr.ecr.*.amazonaws.com/supply-chain-security-dev-*"
+          attestations:
+            - type: https://slsa.dev/provenance/v0.2
+              attestors:
+                - entries:
+                    - keyless:
+                        issuer: "https://token.actions.githubusercontent.com"
+                        subject: "https://github.com/davidlihor/k8s-supply-chain-security/.github/workflows/*"
+                        rekor:
+                          url: "https://rekor.sigstore.dev"
+              conditions:
+                - all:
+                    - key: '{{ `{{ invocation.configSource.uri }}` }}'
+                      operator: Equals
+                      value: "git+https://github.com/davidlihor/k8s-supply-chain-security@refs/heads/main"
+          mutateDigest: true
+          verifyDigest: true
+          required: true
+{{ end }}
