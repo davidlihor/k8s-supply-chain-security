@@ -30,6 +30,7 @@ spec:
     - group: 'admissionregistration.k8s.io'
       kind: ValidatingWebhookConfiguration
     - group: 'apiregistration.k8s.io'
+      kind: APIService
     - group: 'kyverno.io'
       kind: ClusterPolicy
   sourceRepos:
