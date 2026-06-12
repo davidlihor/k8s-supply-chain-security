@@ -20,12 +20,8 @@ spec:
       ignoreDifferences:
         - group: kyverno.io
           kind: ClusterPolicy
-          jsonPointers:
-            - '.spec.rules[]? | .skipBackgroundRequests?'
-            - '.spec.rules[]? | .validate? | .allowExistingViolations?'
-            - '.spec.rules[]? | .verifyImages[]? | .useCache?'
-            - '.spec.rules[]? | .verifyImages[]? | .signatureAlgorithm?'
-            - '.spec.rules[]? | .verifyImages[]? | .attestations[]? | .attestors[]? | .entries[]? | .signatureAlgorithm?'
+          managedFieldsManagers:
+            - kyverno
       source:
         repoURL: https://github.com/davidlihor/k8s-supply-chain-security.git
         targetRevision: HEAD
