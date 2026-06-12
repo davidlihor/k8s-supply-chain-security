@@ -7,7 +7,7 @@ backend:
   image:
     repository: "405483480335.dkr.ecr.eu-central-1.amazonaws.com/supply-chain-security-dev-backend"
     tag: "latest"
-    digest: "sha256:94ba72e4bdcff8f42640f3a09f6031fe3898110452af6c7c24ac569c6a95db58"
+    digest: "sha256:cb8d949b308b4eeb0fa9be7cf2caddbe8d220cbc3e98934dc90f874bdc77b29f"
   service:
     type: ClusterIP
     port: 8080
@@ -24,7 +24,7 @@ frontend:
   image:
     repository: "405483480335.dkr.ecr.eu-central-1.amazonaws.com/supply-chain-security-dev-frontend"
     tag: "latest"
-    digest: "sha256:abb16935113dd1c29307ccacde9db3b6e5e80d556d152759f11c29b7ae610cb3"
+    digest: "sha256:56a2da84e6335de7df9ddee587ff2649e7f8be54c662c1c00942f2f23b098cd2"
   service:
     type: ClusterIP
     port: 8080
