@@ -78,7 +78,13 @@ module "kyverno" {
 module "github_oidc" {
   source = "../../modules/github-oidc"
 
-  project_name      = var.project_name
-  environment       = var.environment
-  github_repository = var.github_repository
+  project_name        = var.project_name
+  environment         = var.environment
+  github_repository   = var.github_repository
+  repository_owner    = var.repository_owner
+}
+
+module "argocd" {
+  source = "../../modules/argocd"
+  argocd_chart_version = var.argocd_chart_version
 }

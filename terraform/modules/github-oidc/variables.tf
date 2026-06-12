@@ -12,3 +12,8 @@ variable "github_repository" {
   description = "GitHub repository in format owner/repo"
   type        = string
 }
+
+variable "repository_owner" {
+  description = "Repository owner"
+  type        = string
+}

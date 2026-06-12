@@ -11,7 +11,7 @@ variable "environment" {
 variable "kyverno_chart_version" {
   description = "Kyverno Helm chart version"
   type        = string
-  default     = "3.2.6"
+  default     = "3.8.1"
 }
 
 variable "kyverno_irsa_role_arn" {

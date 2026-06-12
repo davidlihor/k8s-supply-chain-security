@@ -13,7 +13,7 @@ variable "project_name" {
 variable "environment" {
   description = "Environment type"
   type        = string
-  default     = "development"
+  default     = "dev"
 }
 
 variable "vpc_cidr" {
@@ -55,16 +55,22 @@ variable "node_instance_types" {
 variable "kyverno_chart_version" {
   description = "Kyverno Helm chart version"
   type        = string
-  default     = "3.2.6"
+  default     = "3.8.1"
+}
+
+variable "argocd_chart_version" {
+  description = "Argo CD Helm chart version"
+  type        = string
+  default     = "9.3.4"
 }
 
 variable "github_repository" {
   description = "GitHub repository"
   type        = string
-  default     = "Reactivities"
+  default     = "k8s-supply-chain-security"
 }
 
-variable "owner" {
+variable "repository_owner" {
   description = "Owner of the project"
   type        = string
   default     = "davidlihor"

@@ -4,7 +4,7 @@ resource "kubernetes_namespace_v1" "kyverno" {
 
     labels = {
       "app.kubernetes.io/managed-by" = "terraform"
-      "app.kubernetes.io/part-of"    = "supply-chain-security-pipeline"
+      "app.kubernetes.io/part-of"    = "k8s-supply-chain-security"
     }
   }
 }
@@ -17,12 +17,13 @@ resource "helm_release" "kyverno" {
   version    = var.kyverno_chart_version
   timeout    = 600
 
-  values = [
+    values = [
     yamlencode({
       admissionController = {
         replicas = 3
 
         serviceAccount = {
+          create = true
           annotations = {
             "eks.amazonaws.com/role-arn" = var.kyverno_irsa_role_arn
           }
@@ -43,6 +44,7 @@ resource "helm_release" "kyverno" {
       }
 
       config = {
+        enableDefaultRegistryMutation = true
         webhooks = [
           {
             namespaceSelector = {
@@ -55,6 +57,7 @@ resource "helm_release" "kyverno" {
               ]
             }
             timeoutSeconds = 30
+            failurePolicy  = "Fail"
           }
         ]
       }
@@ -103,6 +106,8 @@ resource "helm_release" "kyverno" {
           enabled = true
         }
       }
+
+      registryCredHelpers = "default,ecr-login"
     })
   ]
 }
