@@ -21,10 +21,10 @@ spec:
         - group: kyverno.io
           kind: ClusterPolicy
           jsonPointers:
-            - /spec/rules/*/skipBackgroundRequests
-            - /spec/rules/*/validate/allowExistingViolations
-            - /spec/rules/*/verifyImages/*/useCache
-            - /spec/rules/*/verifyImages/*/attestations/*/attestors/*/entries/*/signatureAlgorithm
+            - /spec/rules/0/skipBackgroundRequests
+            - /spec/rules/0/validate/allowExistingViolations
+            - /spec/rules/0/verifyImages/0/useCache
+            - /spec/rules/0/verifyImages/0/attestations/0/attestors/0/entries/0/signatureAlgorithm
       source:
         repoURL: https://github.com/davidlihor/k8s-supply-chain-security.git
         targetRevision: HEAD
