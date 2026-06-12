@@ -18,16 +18,13 @@ spec:
     spec:
       project: supply-chain-security
       ignoreDifferences:
-        - group: networking.istio.io
-          kind: DestinationRule
+        - group: kyverno.io
+          kind: ClusterPolicy
           jsonPointers:
-            - /spec/subsets
-        - group: external-secrets.io
-          kind: ExternalSecret
-          jsonPointers:
-            - /spec/dataFrom/0/extract/conversionStrategy
-            - /spec/dataFrom/0/extract/decodingStrategy
-            - /spec/dataFrom/0/extract/metadataPolicy
+            - /spec/rules/*/skipBackgroundRequests
+            - /spec/rules/*/validate/allowExistingViolations
+            - /spec/rules/*/verifyImages/*/useCache
+            - /spec/rules/*/verifyImages/*/attestations/*/attestors/*/entries/*/signatureAlgorithm
       source:
         repoURL: https://github.com/davidlihor/k8s-supply-chain-security.git
         targetRevision: HEAD
