@@ -107,15 +107,12 @@ resource "aws_iam_role" "kyverno" {
       {
         Effect = "Allow"
         Principal = {
-          Federated = local.oidc_provider_arn
+          Service = "pods.eks.amazonaws.com"
         }
-        Action = "sts:AssumeRoleWithWebIdentity"
-        Condition = {
-          StringEquals = {
-            "${local.oidc_provider}:aud" = "sts.amazonaws.com"
-            "${local.oidc_provider}:sub" = "system:serviceaccount:kyverno:kyverno-admission-controller"
-          }
-        }
+        Action = [
+          "sts:AssumeRole",
+          "sts:TagSession"
+        ]
       }
     ]
   })
@@ -123,6 +120,13 @@ resource "aws_iam_role" "kyverno" {
   tags = {
     Name = "${var.project_name}-${var.environment}-kyverno-irsa"
   }
+}
+
+resource "aws_eks_pod_identity_association" "kyverno" {
+  cluster_name    = module.eks.cluster_name
+  namespace       = "kyverno"
+  service_account = "kyverno-admission-controller"
+  role_arn        = aws_iam_role.kyverno.arn
 }
 
 resource "aws_iam_role_policy" "kyverno_ecr" {

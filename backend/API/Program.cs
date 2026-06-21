@@ -60,6 +60,29 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<ChatHub>("/chat");
 
+app.MapGet("/healthz", () => Results.Ok(new 
+{ 
+    status = "healthy", 
+    timestamp = DateTime.UtcNow.ToString("o") 
+})).AllowAnonymous();
+
+app.MapGet("/metadata", () => Results.Ok(new
+{
+    build = new
+    {
+        image_digest = Environment.GetEnvironmentVariable("IMAGE_DIGEST") ?? "unknown",
+        commit_sha = Environment.GetEnvironmentVariable("COMMIT_SHA") ?? "unknown",
+        build_timestamp = Environment.GetEnvironmentVariable("BUILD_TIMESTAMP") ?? "unknown",
+        slsa_level = Environment.GetEnvironmentVariable("SLSA_LEVEL") ?? "unknown"
+    },
+    attestations = new
+    {
+        signed = Environment.GetEnvironmentVariable("IMAGE_SIGNED") == "true",
+        sbom_attached = Environment.GetEnvironmentVariable("SBOM_ATTACHED") == "true",
+        provenance_attached = Environment.GetEnvironmentVariable("PROVENANCE_ATTACHED") == "true"
+    }
+})).AllowAnonymous();
+
 using var scope = app.Services.CreateScope();
 var services = scope.ServiceProvider;
 

@@ -24,9 +24,6 @@ resource "helm_release" "kyverno" {
 
         serviceAccount = {
           create = true
-          annotations = {
-            "eks.amazonaws.com/role-arn" = var.kyverno_irsa_role_arn
-          }
         }
 
         container = {
@@ -45,6 +42,7 @@ resource "helm_release" "kyverno" {
 
       config = {
         enableDefaultRegistryMutation = true
+        excludeKyvernoNamespace = true
         webhooks = [
           {
             namespaceSelector = {
