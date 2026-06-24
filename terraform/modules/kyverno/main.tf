@@ -43,6 +43,7 @@ resource "helm_release" "kyverno" {
       config = {
         enableDefaultRegistryMutation = true
         excludeKyvernoNamespace = true
+        maxContextSize = 15728640
         webhooks = [
           {
             namespaceSelector = {
