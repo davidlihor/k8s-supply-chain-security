@@ -25,6 +25,14 @@ spec:
           env:
             - name: IMAGE_DIGEST
               value: "{{ .Values.backend.image.digest }}"
+            - name: SLSA_LEVEL
+              value: "SLSA 3"
+            - name: IMAGE_SIGNED
+              value: "true"
+            - name: SBOM_ATTACHED
+              value: "true"
+            - name: PROVENANCE_ATTACHED
+              value: "true"
             - name: ConnectionStrings__DefaultConnection
               value: "Server=sql;Database=reactivities;User Id=sa;Password=Password@123;TrustServerCertificate=True"
             - name: ASPNETCORE_ENVIRONMENT

@@ -25,6 +25,14 @@ spec:
           env:
             - name: IMAGE_DIGEST
               value: "{{ .Values.frontend.image.digest }}"
+            - name: SLSA_LEVEL
+              value: "SLSA 3"
+            - name: IMAGE_SIGNED
+              value: "true"
+            - name: SBOM_ATTACHED
+              value: "true"
+            - name: PROVENANCE_ATTACHED
+              value: "true"
             - name: API_URL
               value: "http://backend:8080/api"
             - name: CHAT_URL
