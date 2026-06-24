@@ -50,7 +50,7 @@ spec:
                     - key: '{{ `{{ components[0].name }}` }}'
                       operator: NotEquals
                       value: ""
-          mutateDigest: true
+          mutateDigest: false
           verifyDigest: true
           required: true
 {{ end }}

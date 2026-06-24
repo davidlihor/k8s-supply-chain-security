@@ -47,7 +47,7 @@ spec:
                     - key: '{{ `{{ invocation.configSource.uri }}` }}'
                       operator: Equals
                       value: "git+https://github.com/davidlihor/k8s-supply-chain-security@refs/heads/main"
-          mutateDigest: true
+          mutateDigest: false
           verifyDigest: true
           required: true
 {{ end }}
