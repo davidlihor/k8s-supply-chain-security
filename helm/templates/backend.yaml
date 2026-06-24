@@ -23,6 +23,8 @@ spec:
             - containerPort: 8080
               name: http
           env:
+            - name: IMAGE_DIGEST
+              value: "{{ .Values.backend.image.digest }}"
             - name: ConnectionStrings__DefaultConnection
               value: "Server=sql;Database=reactivities;User Id=sa;Password=Password@123;TrustServerCertificate=True"
             - name: ASPNETCORE_ENVIRONMENT

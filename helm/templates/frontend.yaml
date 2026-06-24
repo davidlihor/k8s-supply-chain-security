@@ -23,6 +23,8 @@ spec:
             - containerPort: 8080
               name: http
           env:
+            - name: IMAGE_DIGEST
+              value: "{{ .Values.frontend.image.digest }}"
             - name: API_URL
               value: "http://backend:8080/api"
             - name: CHAT_URL

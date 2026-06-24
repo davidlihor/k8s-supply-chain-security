@@ -78,6 +78,10 @@ jobs:
             --build-arg COMMIT_SHA="${GITHUB_SHA}" \
             --build-arg BUILD_TIMESTAMP="${{ steps.meta.outputs.build_timestamp }}" \
             --build-arg APP_VERSION="1.0.0-${GITHUB_SHA::8}" \
+            --build-arg SLSA_LEVEL="SLSA 3" \
+            --build-arg IMAGE_SIGNED="true" \
+            --build-arg SBOM_ATTACHED="true" \
+            --build-arg PROVENANCE_ATTACHED="true" \
             --tag "${{ steps.meta.outputs.image_ref }}" \
             --file ${{ matrix.dockerfile }} \
             ${{ matrix.context }}
