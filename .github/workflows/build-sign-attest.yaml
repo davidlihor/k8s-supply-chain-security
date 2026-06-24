@@ -568,7 +568,7 @@ jobs:
 
       - name: Generate pipeline summary
         run: |
-          echo "## Supply Chain Security Pipeline Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Supply Chain Security Results" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Workflow:** Build, Sign & Attest (Matrix)" >> "$GITHUB_STEP_SUMMARY"
           echo "**Commit:** \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"

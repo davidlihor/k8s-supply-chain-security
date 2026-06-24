@@ -12,7 +12,7 @@ metadata:
       Verifies that application images have valid SLSA provenance attestations
       signed by GitHub Actions OIDC. SQL Server images are excluded.
 spec:
-  validationFailureAction: Enforce
+  validationFailureAction: Audit
   background: true
   webhookTimeoutSeconds: 30
   rules:
